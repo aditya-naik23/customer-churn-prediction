@@ -7,38 +7,68 @@ model = joblib.load('churn_model.pkl')
 scaler = joblib.load('scaler.pkl')
 encoders = joblib.load('encoders.pkl')  # dict: {column_name: fitted LabelEncoder}
 
-st.set_page_config(page_title="Customer Churn Predictor")
-st.title("Customer Churn Predictor")
-st.write("Fill in the customer details below to predict churn risk.")
+st.set_page_config(page_title="Churn Predictor", page_icon="📊", layout="centered")
 
-# ---- Collect inputs (mirrors the original dataset's columns) ----
-gender = st.selectbox("Gender", ["Female", "Male"])
-senior_citizen = st.selectbox("Senior Citizen", [0, 1])
-partner = st.selectbox("Partner", ["Yes", "No"])
-dependents = st.selectbox("Dependents", ["Yes", "No"])
-tenure = st.number_input("Tenure (months)", min_value=0, max_value=100, value=12)
-phone_service = st.selectbox("Phone Service", ["Yes", "No"])
-multiple_lines = st.selectbox("Multiple Lines", ["Yes", "No", "No phone service"])
-internet_service = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
-online_security = st.selectbox("Online Security", ["Yes", "No", "No internet service"])
-online_backup = st.selectbox("Online Backup", ["Yes", "No", "No internet service"])
-device_protection = st.selectbox("Device Protection", ["Yes", "No", "No internet service"])
-tech_support = st.selectbox("Tech Support", ["Yes", "No", "No internet service"])
-streaming_tv = st.selectbox("Streaming TV", ["Yes", "No", "No internet service"])
-streaming_movies = st.selectbox("Streaming Movies", ["Yes", "No", "No internet service"])
-contract = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
-paperless_billing = st.selectbox("Paperless Billing", ["Yes", "No"])
-payment_method = st.selectbox(
-    "Payment Method",
-    ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
-)
-monthly_charges = st.number_input("Monthly Charges", min_value=0.0, max_value=200.0, value=70.0)
-total_charges = st.number_input("Total Charges", min_value=0.0, max_value=10000.0, value=1000.0)
+# ---- Light styling ----
+st.markdown("""
+    <style>
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        height: 3em;
+        font-weight: 600;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 2rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-if st.button("Predict"):
+st.title("📊 Customer Churn Predictor")
+st.caption("Enter a customer's details to estimate their likelihood of churning.")
+
+with st.form("churn_form"):
+
+    st.subheader("Customer profile")
+    c1, c2, c3 = st.columns(3)
+    gender = c1.selectbox("Gender", ["Female", "Male"])
+    senior_citizen = c2.selectbox("Senior citizen?", ["No", "Yes"])
+    partner = c3.selectbox("Has partner?", ["Yes", "No"])
+    dependents = c1.selectbox("Has dependents?", ["Yes", "No"])
+    tenure = c2.slider("Tenure (months)", 0, 72, 12)
+    contract = c3.selectbox("Contract type", ["Month-to-month", "One year", "Two year"])
+
+    st.subheader("Account & billing")
+    b1, b2, b3 = st.columns(3)
+    paperless_billing = b1.selectbox("Paperless billing?", ["Yes", "No"])
+    payment_method = b2.selectbox(
+        "Payment method",
+        ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
+    )
+    monthly_charges = b3.number_input("Monthly charges ($)", 0.0, 200.0, 70.0, step=1.0)
+    total_charges = st.number_input("Total charges ($)", 0.0, 10000.0, 1000.0, step=10.0)
+
+    st.subheader("Services")
+    s1, s2, s3 = st.columns(3)
+    phone_service = s1.selectbox("Phone service?", ["Yes", "No"])
+    multiple_lines = s2.selectbox("Multiple lines?", ["Yes", "No", "No phone service"])
+    internet_service = s3.selectbox("Internet service", ["DSL", "Fiber optic", "No"])
+
+    with st.expander("Add-on services (security, backup, streaming...)"):
+        e1, e2, e3 = st.columns(3)
+        online_security = e1.selectbox("Online security", ["Yes", "No", "No internet service"])
+        online_backup = e2.selectbox("Online backup", ["Yes", "No", "No internet service"])
+        device_protection = e3.selectbox("Device protection", ["Yes", "No", "No internet service"])
+        tech_support = e1.selectbox("Tech support", ["Yes", "No", "No internet service"])
+        streaming_tv = e2.selectbox("Streaming TV", ["Yes", "No", "No internet service"])
+        streaming_movies = e3.selectbox("Streaming movies", ["Yes", "No", "No internet service"])
+
+    submitted = st.form_submit_button("Predict churn risk")
+
+if submitted:
     row = {
         "gender": gender,
-        "SeniorCitizen": senior_citizen,
+        "SeniorCitizen": 1 if senior_citizen == "Yes" else 0,
         "Partner": partner,
         "Dependents": dependents,
         "tenure": tenure,
@@ -59,19 +89,29 @@ if st.button("Predict"):
     }
     input_df = pd.DataFrame([row])
 
-    # Apply the SAME label encoders used at training time to each categorical column.
     for col, le in encoders.items():
         if col in input_df.columns:
             input_df[col] = le.transform(input_df[col])
 
-    # Scale only the columns that were scaled during training.
     cols_to_scale = ["tenure", "MonthlyCharges", "TotalCharges"]
     input_df[cols_to_scale] = scaler.transform(input_df[cols_to_scale])
 
     prediction = model.predict(input_df)[0]
     probability = model.predict_proba(input_df)[0][1]
 
+    st.divider()
+    r1, r2 = st.columns([1, 2])
+    with r1:
+        if prediction == 1:
+            st.metric("Prediction", "Churn risk")
+        else:
+            st.metric("Prediction", "Likely to stay")
+    with r2:
+        st.write("**Churn probability**")
+        st.progress(min(max(probability, 0.0), 1.0))
+        st.write(f"{probability:.0%}")
+
     if prediction == 1:
-        st.error(f"Prediction: Likely to churn (probability: {probability:.1%})")
+        st.error("This customer shows a high risk of churning. Consider proactive retention outreach.")
     else:
-        st.success(f"Prediction: Not likely to churn (probability of churn: {probability:.1%})")
+        st.success("This customer looks likely to stay, based on the current profile.")
