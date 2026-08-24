@@ -9,7 +9,6 @@ encoders = joblib.load('encoders.pkl')  # dict: {column_name: fitted LabelEncode
 
 st.set_page_config(page_title="Churn Predictor", page_icon="📊", layout="centered")
 
-# ---- Light styling ----
 st.markdown("""
     <style>
     .stButton>button {
@@ -89,12 +88,13 @@ if submitted:
     }
     input_df = pd.DataFrame([row])
 
+    # Apply the SAME label encoders used at training time to each categorical column.
     for col, le in encoders.items():
         if col in input_df.columns:
             input_df[col] = le.transform(input_df[col])
 
-    cols_to_scale = ["tenure", "MonthlyCharges", "TotalCharges"]
-    input_df[cols_to_scale] = scaler.transform(input_df[cols_to_scale])
+    # This model's scaler was fit on ALL feature columns, not just the numeric ones.
+    input_df = pd.DataFrame(scaler.transform(input_df), columns=input_df.columns)
 
     prediction = model.predict(input_df)[0]
     probability = model.predict_proba(input_df)[0][1]
